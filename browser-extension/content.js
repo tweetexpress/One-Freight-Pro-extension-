@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         ONE Freight Pro
 // @namespace    https://tweetexpress.com
-// @version      3.54.9
+// @version      3.54.10
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
 // @match        https://one.dat.com/search-loads*
@@ -287,26 +287,20 @@
         '',
         'Load details I have:',
         '{{load_details}}',
-        '',
-        'Please let me know if that works and send the rate confirmation.',
       ].join('\n'),
     },
   ];
 
   function templateVars(fields) {
     const offer = offerFromMarket(fields);
-    const avgLabel = fields.marketPeriod ? `${fields.marketPeriod} average` : 'spot-rate average';
     const length = detailValue(fields, /length/i);
     const load = detailValue(fields, /^load$/i) || detailValue(fields, /load type/i);
+    const equipmentLine = [fields.truck, length].filter(Boolean).join(' - ').toLowerCase();
     const loadDetails = [
-      fields.pickupDate ? `Pickup: ${fields.pickupDate}` : '',
+      fields.pickupDate ? `Pickup Date: ${fields.pickupDate}` : '',
       fields.origin || fields.destination ? `Lane: ${fields.origin || '?'} -> ${fields.destination || '?'}` : '',
-      fields.truck ? `Equipment: ${fields.truck}` : '',
-      length ? `Length: ${length}` : '',
-      fields.weight ? `Weight: ${fields.weight}` : '',
-      fields.miles ? `Trip: ${fields.miles}` : '',
-      fields.deadhead ? `Deadhead: ${fields.deadhead}` : '',
-      fields.refId ? `Reference ID: ${fields.refId}` : '',
+      equipmentLine ? `Equipment: ${equipmentLine}` : '',
+      fields.miles ? `Trip Miles: ${fields.miles}` : '',
     ].filter(Boolean).join('\n');
     return {
       origin: fields.origin || '',
@@ -322,7 +316,7 @@
       market_period: fields.marketPeriod || '',
       offer_20: offer ? fmtDollar(offer) : '',
       offer_line: offer
-        ? `I can offer ${fmtDollar(offer)} on this load, based on the ${avgLabel} of ${fields.marketAvg} plus 20%.`
+        ? `I can cover this load for ${fmtDollar(offer)}. Let me know if you're interested.`
         : 'I can make an offer on this load. Please confirm your current best rate.',
       company: fields.company || '',
       ref_id: fields.refId || '',

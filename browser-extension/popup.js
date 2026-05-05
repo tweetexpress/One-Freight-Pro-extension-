@@ -21,8 +21,6 @@ const DEFAULT_TEMPLATE_DEFS = [
       '',
       'Load details I have:',
       '{{load_details}}',
-      '',
-      'Please let me know if that works and send the rate confirmation.',
     ].join('\n'),
   },
 ];
