@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         ONE Freight Pro
 // @namespace    https://tweetexpress.com
-// @version      3.54.11
+// @version      3.54.12
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
 // @match        https://one.dat.com/search-loads*
@@ -42,20 +42,81 @@
     catch { return []; }
   }
 
-  function markContacted(email) {
-    if (!email) return;
+  function normalizeContactPart(value) {
+    return cleanText(value).toLowerCase();
+  }
+
+  function contactLaneKey(fields = {}) {
+    const origin = normalizeContactPart(fields.origin);
+    const destination = normalizeContactPart(fields.destination);
+    return (origin || destination) ? `${origin}->${destination}` : '';
+  }
+
+  function contactBrokerKey(email, fields = {}) {
+    const mc = normalizeMcNumber(fields.mc);
+    if (mc) return `mc:${mc}`;
+
+    const company = normalizeContactPart(fields.company);
+    if (company) return `company:${company}`;
+
+    const normalizedEmail = normalizeEmail(email || fields.email || '').toLowerCase();
+    return normalizedEmail ? `email:${normalizedEmail}` : '';
+  }
+
+  function makeContactKey(email, fields = {}) {
+    const broker = contactBrokerKey(email, fields);
+    const lane = contactLaneKey(fields);
+    const pickup = normalizeContactPart(fields.pickupDate);
+    return [broker, lane, pickup].filter(Boolean).join('|');
+  }
+
+  function getContactEntryKey(entry) {
+    if (!entry) return '';
+    return typeof entry === 'string' ? entry : cleanText(entry.key);
+  }
+
+  function describeContactContext(fields = {}) {
+    const lane = [cleanText(fields.origin), cleanText(fields.destination)].filter(Boolean).join(' -> ');
+    const pickup = cleanText(fields.pickupDate);
+    if (lane && pickup) return `${lane} for ${pickup}`;
+    return lane || pickup || 'this load';
+  }
+
+  function markContacted(email, fields = {}) {
+    const key = makeContactKey(email, fields);
+    if (!key) return;
     try {
       const data = JSON.parse(localStorage.getItem(CONTACTS_KEY) || '{}');
       const t = todayStr();
       if (!data[t]) data[t] = [];
-      if (!data[t].includes(email)) data[t].push(email);
+      if (!data[t].some(entry => getContactEntryKey(entry) === key)) {
+        data[t].push({
+          key,
+          email: normalizeEmail(email || fields.email || '').toLowerCase(),
+          company: cleanText(fields.company),
+          mc: normalizeMcNumber(fields.mc),
+          origin: cleanText(fields.origin),
+          destination: cleanText(fields.destination),
+          pickupDate: cleanText(fields.pickupDate),
+          timestamp: new Date().toISOString(),
+        });
+      }
       localStorage.setItem(CONTACTS_KEY, JSON.stringify(data));
       if (refreshBadge) refreshBadge();
     } catch {}
   }
 
-  function wasContactedToday(email) {
-    return !!email && getContactsToday().includes(email);
+  function wasContactedToday(email, fields = {}) {
+    const key = makeContactKey(email, fields);
+    if (!key) return false;
+    const entries = getContactsToday();
+    if (entries.some(entry => getContactEntryKey(entry) === key)) return true;
+
+    // Older builds stored only raw emails. Keep the fallback only when no lane
+    // context exists, otherwise generic broker inboxes cause false warnings.
+    if (contactLaneKey(fields)) return false;
+    const normalizedEmail = normalizeEmail(email || fields.email || '').toLowerCase();
+    return !!normalizedEmail && entries.some(entry => getContactEntryKey(entry).toLowerCase() === normalizedEmail);
   }
 
   // Count unique emails sent across the last N calendar days (Infinity = all time)
@@ -86,7 +147,7 @@
   function setContactedStyle(btn) {
     btn.textContent = '✓ Emailed';
     btn.style.background = '#5a7a5a';
-    btn.title = 'Already emailed today — click to email again';
+    btn.title = 'Already emailed this broker for this lane today — click to email again';
   }
 
   const MONTHS = {
@@ -158,6 +219,10 @@
       templateKey,
       offer: offer || '',
       toEmail: toEmail || '',
+      contactKey: makeContactKey(toEmail, fields),
+      brokerKey: contactBrokerKey(toEmail, fields),
+      laneKey: contactLaneKey(fields),
+      pickupDate: cleanText(fields.pickupDate),
       copyLoad: formatLoadInfo(Object.assign({}, fields, { email: toEmail || fields.email || '' })),
     };
     const log = getEmailLog();
@@ -2213,16 +2278,16 @@
       'font-family:inherit',
     ].join(';');
 
-    if (wasContactedToday(initialRoute.email)) setContactedStyle(btn);
+    if (wasContactedToday(initialRoute.email, initialRoute.fields || fields)) setContactedStyle(btn);
 
     btn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
       const routed = routeEmailTarget(brokenEmail || fields.email || '', fields);
       const target = routed.email;
-      if (wasContactedToday(target) && !confirm(`You already emailed ${target} today — send again?`)) return;
+      if (wasContactedToday(target, routed.fields) && !confirm(`You already emailed ${target} about ${describeContactContext(routed.fields)} today — send again?`)) return;
       launch(brokenEmail || fields.email || '', fields);
-      markContacted(target);
+      markContacted(target, routed.fields);
       if (target) setContactedStyle(btn);
     });
 
@@ -2292,17 +2357,17 @@
 
     if (isValidEmail(email)) {
       const routed = routeEmailTarget(email, fields);
-      if (wasContactedToday(routed.email) && !confirm(`You already emailed ${routed.email} today — send again?`)) return;
+      if (wasContactedToday(routed.email, routed.fields) && !confirm(`You already emailed ${routed.email} about ${describeContactContext(routed.fields)} today — send again?`)) return;
       launch(email, fields);
-      markContacted(routed.email);
+      markContacted(routed.email, routed.fields);
     } else {
       // mailto: href was broken — try extracting a clean email from card text first
       const textEmail = findEmailInCard(detailEl);
       if (isValidEmail(textEmail)) {
         const routed = routeEmailTarget(textEmail, fields);
-        if (wasContactedToday(routed.email) && !confirm(`You already emailed ${routed.email} today — send again?`)) return;
+        if (wasContactedToday(routed.email, routed.fields) && !confirm(`You already emailed ${routed.email} about ${describeContactContext(routed.fields)} today — send again?`)) return;
         launch(textEmail, fields);
-        markContacted(routed.email);
+        markContacted(routed.email, routed.fields);
       } else {
         injectButton(detailEl, fields, email || rawEmail);
       }
@@ -2430,7 +2495,7 @@
       const fields = extractRowFields(row);
       const routed = routeEmailTarget(email || fields.email, fields);
       launch(email || fields.email, fields);
-      markContacted(routed.email);
+      markContacted(routed.email, routed.fields);
     }));
     toolbar.appendChild(makeToolbarButton('M', 'Open lane in Google Maps', () => {
       const fields = extractRowFields(row);
