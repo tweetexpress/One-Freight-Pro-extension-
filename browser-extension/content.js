@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         ONE Freight Pro
 // @namespace    https://tweetexpress.com
-// @version      3.54.10
+// @version      3.54.11
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
 // @match        https://one.dat.com/search-loads*
@@ -297,6 +297,7 @@
     const load = detailValue(fields, /^load$/i) || detailValue(fields, /load type/i);
     const equipmentLine = [fields.truck, length].filter(Boolean).join(' - ').toLowerCase();
     const loadDetails = [
+      fields.startPoint ? `Truck Location: ${fields.startPoint}` : '',
       fields.pickupDate ? `Pickup Date: ${fields.pickupDate}` : '',
       fields.origin || fields.destination ? `Lane: ${fields.origin || '?'} -> ${fields.destination || '?'}` : '',
       equipmentLine ? `Equipment: ${equipmentLine}` : '',
