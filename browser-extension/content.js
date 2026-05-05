@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         ONE Freight Pro
 // @namespace    https://tweetexpress.com
-// @version      3.54.8
+// @version      3.54.9
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
 // @match        https://one.dat.com/search-loads*
