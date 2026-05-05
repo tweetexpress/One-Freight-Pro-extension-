@@ -1,0 +1,202 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ONE Freight Pro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div>
+      <div class="brand">ONE Freight Pro</div>
+      <div class="sub">Outlook Desktop now. Gmail API planned.</div>
+    </div>
+    <div class="pill" data-status>Local</div>
+  </header>
+
+  <nav>
+    <button class="tab active" data-tab="dashboard">Home</button>
+    <button class="tab" data-tab="templates">Templates</button>
+    <button class="tab" data-tab="brokers">Brokers</button>
+    <button class="tab" data-tab="activity">Activity</button>
+    <button class="tab" data-tab="roadmap">Roadmap</button>
+  </nav>
+
+  <main>
+    <section class="panel active" data-panel="dashboard">
+      <div class="cards">
+        <div class="card">
+          <span>Mode</span>
+          <strong data-mode>Draft Mode</strong>
+        </div>
+        <div class="card">
+          <span>Default Template</span>
+          <strong data-default-template>Missing Details</strong>
+        </div>
+        <div class="card">
+          <span>Email Log</span>
+          <strong data-email-count>0</strong>
+        </div>
+        <div class="card">
+          <span>Saved Loads</span>
+          <strong data-saved-count>0</strong>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="list-head">
+          <h2>Quick Sections</h2>
+          <button class="small secondary" data-open-dat>Open DAT One</button>
+        </div>
+        <div class="section-grid">
+          <button class="section-tile" data-jump-tab="templates">
+            <strong>Templates</strong>
+            <span>Edit wording, subject, CC, and placeholders.</span>
+          </button>
+          <button class="section-tile" data-jump-tab="brokers">
+            <strong>Preferred Brokers</strong>
+            <span>Route emails to your preferred contact by brokerage.</span>
+          </button>
+          <button class="section-tile" data-jump-tab="activity">
+            <strong>Activity</strong>
+            <span>Review local email and saved-load counts.</span>
+          </button>
+          <button class="section-tile" data-jump-tab="roadmap">
+            <strong>Roadmap</strong>
+            <span>Track Gmail, HERE, Supabase, and ratecon plans.</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="templates">
+      <div class="template-layout">
+        <aside class="template-list">
+          <div class="list-head">
+            <h2>Templates</h2>
+            <button class="small" data-add-template>Add</button>
+          </div>
+          <div data-template-list></div>
+          <button class="ghost full" data-reset-templates>Reset Defaults</button>
+        </aside>
+
+        <section class="editor">
+          <label>
+            Name
+            <input data-name>
+          </label>
+          <label>
+            Subject
+            <input data-subject>
+          </label>
+          <label>
+            CC
+            <input data-cc placeholder="Optional">
+          </label>
+          <label>
+            Body
+            <textarea data-body spellcheck="true"></textarea>
+          </label>
+          <div class="actions">
+            <button data-save-template>Save Template</button>
+            <button class="secondary" data-set-default>Set Default</button>
+          </div>
+          <div class="hint" data-save-status></div>
+          <div class="variables">
+            <h3>Variables</h3>
+            <p>{{origin}} {{dest}} {{avail}} {{truck}} {{rate}} {{miles}} {{deadhead}} {{market_avg}} {{offer_20}} {{company}} {{ref_id}}</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="brokers">
+      <div class="settings-layout">
+        <section class="editor">
+          <div class="list-head">
+            <h2>Preferred Brokers</h2>
+            <span class="muted">Routes emails by company match</span>
+          </div>
+          <label>
+            Brokerage / Company Contains
+            <input data-broker-company placeholder="Arrive, RXO, TQL...">
+          </label>
+          <label>
+            Preferred Broker Name
+            <input data-broker-name placeholder="Optional">
+          </label>
+          <label>
+            Preferred Email
+            <input data-broker-email placeholder="broker@example.com">
+          </label>
+          <label>
+            Notes
+            <textarea class="small-textarea" data-broker-notes placeholder="Lane preference, phone, backup contact..."></textarea>
+          </label>
+          <label class="check-row">
+            <input data-broker-enabled type="checkbox" checked>
+            Enabled
+          </label>
+          <div class="actions">
+            <button data-save-broker-rule>Save Rule</button>
+            <button class="secondary" data-clear-broker-form>Clear</button>
+          </div>
+          <div class="hint" data-broker-status></div>
+        </section>
+
+        <aside class="template-list">
+          <div class="list-head">
+            <h2>Rules</h2>
+            <span class="muted" data-broker-count>0</span>
+          </div>
+          <div data-broker-list></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="activity">
+      <div class="section">
+        <div class="list-head">
+          <h2>Activity</h2>
+          <span class="muted">Local browser ledger</span>
+        </div>
+        <div class="cards two">
+          <div class="card">
+            <span>Emails Logged</span>
+            <strong data-email-count-activity>0</strong>
+          </div>
+          <div class="card">
+            <span>Saved Loads</span>
+            <strong data-saved-count-activity>0</strong>
+          </div>
+        </div>
+        <div class="mini-list">
+          <div>
+            <strong>Current storage</strong>
+            <span>Keeps the local ONE Freight Pro email log and saved loads in this Edge profile.</span>
+          </div>
+          <div>
+            <strong>Next upgrade</strong>
+            <span>Supabase shared ledger so multiple machines write to one account-wide history.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="roadmap">
+      <div class="section">
+        <h2>Build Roadmap</h2>
+        <div class="roadmap-list">
+          <div><strong>Gmail API Sending</strong><span>Fast drafts/sends from the configured business inbox.</span></div>
+          <div><strong>Shared Ledger</strong><span>Supabase sync for email log, saved loads, notes, and preferred brokers.</span></div>
+          <div><strong>HERE Truck Routing</strong><span>Truck-safe miles, toll estimates, and route constraints.</span></div>
+          <div><strong>Rate Confirmation Analyzer</strong><span>Parse Gmail/PDF rate confirmations into a searchable table.</span></div>
+          <div><strong>Weather Overlay</strong><span>Route-point weather for today AM/PM, 24 hours, and 48 hours.</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "ONE Freight Pro",
+  "version": "3.54.7",
+  "description": "Pre-fills Outlook email inquiries from DAT load cards and adds quick load-card tools.",
+  "icons": {
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "action": {
+    "default_title": "ONE Freight Pro",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://one.dat.com/search-loads*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

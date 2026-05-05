@@ -1,0 +1,12 @@
+*.zip
+*.crx
+*.pem
+*.pfx
+*.key
+.env
+.env.*
+node_modules/
+dist/
+build/
+.DS_Store
+Thumbs.db
