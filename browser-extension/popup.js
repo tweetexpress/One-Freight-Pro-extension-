@@ -57,16 +57,22 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 }
 
+function normalizeMcList(value) {
+  const raw = Array.isArray(value) ? value.join(',') : String(value || '');
+  return [...new Set([...raw.matchAll(/\d{4,9}/g)].map(m => m[0]))];
+}
+
 function normalizePreferredBrokerRules(rules) {
   if (!Array.isArray(rules)) return [];
   return rules.map((rule, i) => ({
     id: String(rule.id || `broker_${Date.now()}_${i}`).trim(),
     company: String(rule.company || '').trim(),
+    mcNumbers: normalizeMcList(rule.mcNumbers || rule.mc || rule.mcNumber),
     brokerName: String(rule.brokerName || '').trim(),
     email: normalizeEmail(rule.email || ''),
     notes: String(rule.notes || '').trim(),
     enabled: rule.enabled !== false,
-  })).filter(rule => rule.company && isValidEmail(rule.email));
+  })).filter(rule => (rule.company || rule.mcNumbers.length) && isValidEmail(rule.email));
 }
 
 function chromeGet(keys) {
@@ -155,8 +161,10 @@ function renderBrokerRules() {
   preferredBrokerRules.forEach(rule => {
     const card = document.createElement('div');
     card.className = `broker-rule${rule.enabled ? '' : ' off'}`;
+    const label = rule.company || (rule.mcNumbers.length ? `MC ${rule.mcNumbers.join(', MC ')}` : 'Preferred broker');
     card.innerHTML = `
-      <strong>${escapeHtml(rule.company)} -> ${escapeHtml(rule.email)}</strong>
+      <strong>${escapeHtml(label)} -> ${escapeHtml(rule.email)}</strong>
+      ${rule.mcNumbers.length ? `<span>MC ${escapeHtml(rule.mcNumbers.join(', MC '))}</span>` : ''}
       <span>${escapeHtml(rule.brokerName || 'Preferred broker')} ${rule.enabled ? '' : '(off)'}</span>
       ${rule.notes ? `<span>${escapeHtml(rule.notes)}</span>` : ''}
       <div class="broker-rule-actions">
@@ -227,6 +235,7 @@ function wireTabs() {
 function clearBrokerForm() {
   editingBrokerRuleId = '';
   $('[data-broker-company]').value = '';
+  $('[data-broker-mc]').value = '';
   $('[data-broker-name]').value = '';
   $('[data-broker-email]').value = '';
   $('[data-broker-notes]').value = '';
@@ -273,13 +282,14 @@ function wireEditor() {
 function wireBrokerSettings() {
   $('[data-save-broker-rule]').addEventListener('click', async () => {
     const company = $('[data-broker-company]').value.trim();
+    const mcNumbers = normalizeMcList($('[data-broker-mc]').value);
     const brokerName = $('[data-broker-name]').value.trim();
     const email = normalizeEmail($('[data-broker-email]').value);
     const notes = $('[data-broker-notes]').value.trim();
     const enabled = $('[data-broker-enabled]').checked;
 
-    if (!company) {
-      $('[data-broker-status]').textContent = 'Add the brokerage/company match.';
+    if (!company && !mcNumbers.length) {
+      $('[data-broker-status]').textContent = 'Add an MC number or brokerage/company match.';
       return;
     }
     if (!isValidEmail(email)) {
@@ -288,8 +298,9 @@ function wireBrokerSettings() {
     }
 
     const rule = {
-      id: editingBrokerRuleId || `broker_${Date.now()}`,
+      id: editingBrokerRuleId || (mcNumbers[0] ? `broker_mc_${mcNumbers[0]}_${Date.now()}` : `broker_${Date.now()}`),
       company,
+      mcNumbers,
       brokerName,
       email,
       notes,
@@ -317,6 +328,7 @@ function wireBrokerSettings() {
       if (!rule) return;
       editingBrokerRuleId = rule.id;
       $('[data-broker-company]').value = rule.company;
+      $('[data-broker-mc]').value = (rule.mcNumbers || []).join(', ');
       $('[data-broker-name]').value = rule.brokerName;
       $('[data-broker-email]').value = rule.email;
       $('[data-broker-notes]').value = rule.notes;

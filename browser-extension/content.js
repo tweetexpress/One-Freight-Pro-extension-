@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         ONE Freight Pro
 // @namespace    https://tweetexpress.com
-// @version      3.54.7
+// @version      3.54.8
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
 // @match        https://one.dat.com/search-loads*
@@ -356,16 +356,27 @@
     catch { return DEFAULT_TEMPLATE_DEFS; }
   }
 
+  function normalizeMcNumber(value) {
+    const match = cleanText(value).match(/\d{4,9}/);
+    return match ? match[0] : '';
+  }
+
+  function normalizeMcList(value) {
+    const raw = Array.isArray(value) ? value.join(',') : String(value || '');
+    return [...new Set([...raw.matchAll(/\d{4,9}/g)].map(m => m[0]))];
+  }
+
   function normalizePreferredBrokerRules(rules) {
     if (!Array.isArray(rules)) return [];
     return rules.map((rule, i) => ({
       id: cleanText(rule.id) || `broker_${Date.now()}_${i}`,
       company: cleanText(rule.company),
+      mcNumbers: normalizeMcList(rule.mcNumbers || rule.mc || rule.mcNumber),
       brokerName: cleanText(rule.brokerName),
       email: normalizeEmail(rule.email || ''),
       notes: cleanText(rule.notes),
       enabled: rule.enabled !== false,
-    })).filter(rule => rule.company && isValidEmail(rule.email));
+    })).filter(rule => (rule.mcNumbers.length || rule.company) && isValidEmail(rule.email));
   }
 
   function loadPreferredBrokerRules() {
@@ -381,13 +392,23 @@
   }
 
   function matchPreferredBroker(fields) {
+    const mc = normalizeMcNumber(fields && fields.mc);
     const company = cleanText(fields && fields.company).toLowerCase();
+    if (mc) {
+      const mcRule = PREFERRED_BROKER_RULES.find(rule =>
+        rule.enabled &&
+        Array.isArray(rule.mcNumbers) &&
+        rule.mcNumbers.includes(mc)
+      );
+      if (mcRule) return Object.assign({ matchType: 'MC' }, mcRule);
+    }
     if (!company) return null;
-    return PREFERRED_BROKER_RULES.find(rule =>
+    const companyRule = PREFERRED_BROKER_RULES.find(rule =>
       rule.enabled &&
       rule.company &&
       company.includes(rule.company.toLowerCase())
-    ) || null;
+    );
+    return companyRule ? Object.assign({ matchType: 'Company' }, companyRule) : null;
   }
 
   function routeEmailTarget(toEmail, fields) {
@@ -401,6 +422,8 @@
       preferredBrokerEmail: rule.email,
       preferredBrokerName: rule.brokerName,
       preferredBrokerCompanyMatch: rule.company,
+      preferredBrokerMcMatch: (rule.mcNumbers || []).join(', '),
+      preferredBrokerMatchType: rule.matchType || 'Company',
     });
     return { email: rule.email, fields: routedFields, rule, originalEmail };
   }

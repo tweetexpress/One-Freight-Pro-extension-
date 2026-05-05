@@ -115,10 +115,14 @@
         <section class="editor">
           <div class="list-head">
             <h2>Preferred Brokers</h2>
-            <span class="muted">Routes emails by company match</span>
+            <span class="muted">Routes emails by MC first, company fallback</span>
           </div>
           <label>
-            Brokerage / Company Contains
+            MC Number Match
+            <input data-broker-mc placeholder="175953 or MC175953">
+          </label>
+          <label>
+            Brokerage / Company Contains (fallback)
             <input data-broker-company placeholder="Arrive, RXO, TQL...">
           </label>
           <label>
