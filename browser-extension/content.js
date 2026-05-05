@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         ONE Freight Pro
 // @namespace    https://tweetexpress.com
-// @version      3.54.12
+// @version      3.54.13
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
 // @match        https://one.dat.com/search-loads*
@@ -67,7 +67,8 @@
     const broker = contactBrokerKey(email, fields);
     const lane = contactLaneKey(fields);
     const pickup = normalizeContactPart(fields.pickupDate);
-    return [broker, lane, pickup].filter(Boolean).join('|');
+    const refId = normalizeContactPart(fields.refId);
+    return [broker, lane, pickup, refId ? `ref:${refId}` : ''].filter(Boolean).join('|');
   }
 
   function getContactEntryKey(entry) {
@@ -78,7 +79,10 @@
   function describeContactContext(fields = {}) {
     const lane = [cleanText(fields.origin), cleanText(fields.destination)].filter(Boolean).join(' -> ');
     const pickup = cleanText(fields.pickupDate);
-    if (lane && pickup) return `${lane} for ${pickup}`;
+    const refId = cleanText(fields.refId);
+    const refText = refId ? `, ref ${refId}` : '';
+    if (lane && pickup) return `${lane} for ${pickup}${refText}`;
+    if (lane && refId) return `${lane}, ref ${refId}`;
     return lane || pickup || 'this load';
   }
 
@@ -98,6 +102,7 @@
           origin: cleanText(fields.origin),
           destination: cleanText(fields.destination),
           pickupDate: cleanText(fields.pickupDate),
+          refId: cleanText(fields.refId),
           timestamp: new Date().toISOString(),
         });
       }
@@ -223,6 +228,7 @@
       brokerKey: contactBrokerKey(toEmail, fields),
       laneKey: contactLaneKey(fields),
       pickupDate: cleanText(fields.pickupDate),
+      refId: cleanText(fields.refId),
       copyLoad: formatLoadInfo(Object.assign({}, fields, { email: toEmail || fields.email || '' })),
     };
     const log = getEmailLog();
