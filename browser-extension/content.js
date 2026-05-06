@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         ONE Freight Pro
 // @namespace    https://tweetexpress.com
-// @version      3.54.13
+// @version      3.55.0
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
 // @match        https://one.dat.com/search-loads*
@@ -18,6 +18,8 @@
   const TEMPLATE_KEY  = 'ofp-template';
   const TEMPLATE_DEFS_KEY = 'ofp-template-defs';
   const PREFERRED_BROKERS_KEY = 'ofp-preferred-brokers';
+  const EMAIL_PROVIDER_KEY = 'ofp-email-provider';
+  const GMAIL_ACCOUNT_KEY = 'ofp-gmail-account';
   const SAVED_LOADS_KEY = 'ofp-saved-loads';
   const CALC_KEY = 'ofp-calculator-defaults';
   const BROKER_CHECK_KEY = 'ofp-broker-checks';
@@ -440,6 +442,7 @@
       mcNumbers: normalizeMcList(rule.mcNumbers || rule.mc || rule.mcNumber),
       brokerName: cleanText(rule.brokerName),
       email: normalizeEmail(rule.email || ''),
+      phone: cleanText(rule.phone),
       notes: cleanText(rule.notes),
       enabled: rule.enabled !== false,
     })).filter(rule => (rule.mcNumbers.length || rule.company) && isValidEmail(rule.email));
@@ -487,6 +490,7 @@
       originalEmail,
       preferredBrokerEmail: rule.email,
       preferredBrokerName: rule.brokerName,
+      preferredBrokerPhone: rule.phone,
       preferredBrokerCompanyMatch: rule.company,
       preferredBrokerMcMatch: (rule.mcNumbers || []).join(', '),
       preferredBrokerMatchType: rule.matchType || 'Company',
@@ -529,12 +533,14 @@
 
   function syncTemplatesFromExtensionStorage() {
     if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
-    chrome.storage.local.get([TEMPLATE_DEFS_KEY, TEMPLATE_KEY, PREFERRED_BROKERS_KEY], data => {
+    chrome.storage.local.get([TEMPLATE_DEFS_KEY, TEMPLATE_KEY, PREFERRED_BROKERS_KEY, EMAIL_PROVIDER_KEY, GMAIL_ACCOUNT_KEY], data => {
       if (data && data[TEMPLATE_DEFS_KEY]) applyTemplateDefs(data[TEMPLATE_DEFS_KEY]);
       if (data && data[PREFERRED_BROKERS_KEY]) applyPreferredBrokerRules(data[PREFERRED_BROKERS_KEY]);
       if (data && data[TEMPLATE_KEY] && EMAIL_TEMPLATES[data[TEMPLATE_KEY]]) {
         localStorage.setItem(TEMPLATE_KEY, data[TEMPLATE_KEY]);
       }
+      if (data && data[EMAIL_PROVIDER_KEY]) localStorage.setItem(EMAIL_PROVIDER_KEY, data[EMAIL_PROVIDER_KEY]);
+      if (data && data[GMAIL_ACCOUNT_KEY] !== undefined) localStorage.setItem(GMAIL_ACCOUNT_KEY, data[GMAIL_ACCOUNT_KEY] || '');
     });
   }
 
@@ -546,6 +552,8 @@
       if (changes[TEMPLATE_KEY] && EMAIL_TEMPLATES[changes[TEMPLATE_KEY].newValue]) {
         localStorage.setItem(TEMPLATE_KEY, changes[TEMPLATE_KEY].newValue);
       }
+      if (changes[EMAIL_PROVIDER_KEY]) localStorage.setItem(EMAIL_PROVIDER_KEY, changes[EMAIL_PROVIDER_KEY].newValue || 'outlook');
+      if (changes[GMAIL_ACCOUNT_KEY]) localStorage.setItem(GMAIL_ACCOUNT_KEY, changes[GMAIL_ACCOUNT_KEY].newValue || '');
     });
   }
 
@@ -561,6 +569,8 @@
           emailLogCount: getEmailLog().length,
           savedLoadsCount: getSavedLoads().length,
           mode: isAutoSend() ? 'Money Mode' : 'Draft Mode',
+          emailProvider: getEmailProvider(),
+          gmailAccount: localStorage.getItem(GMAIL_ACCOUNT_KEY) || '',
         });
         return true;
       }
@@ -577,6 +587,11 @@
         sendResponse({ ok: true });
         return true;
       }
+      if (message.type === 'ofp:set-email-provider') {
+        localStorage.setItem(EMAIL_PROVIDER_KEY, message.emailProvider === 'gmail' ? 'gmail' : 'outlook');
+        sendResponse({ ok: true });
+        return true;
+      }
       return false;
     });
   }
@@ -585,6 +600,10 @@
 
   function cleanText(s) {
     return (s || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getEmailProvider() {
+    return localStorage.getItem(EMAIL_PROVIDER_KEY) === 'gmail' ? 'gmail' : 'outlook';
   }
 
   function copyText(text) {
@@ -932,7 +951,7 @@
   <aside>
     <div class="top-actions">
       <a class="btn" data-open-maps href="${mapsUrl(Object.assign({}, fields, { routePoints }))}" target="_blank" rel="noopener">Open Google Maps</a>
-      <button class="secondary" onclick="navigator.clipboard.writeText(document.body.innerText)">Copy Load Info</button>
+      <button class="secondary" data-copy-load type="button">Copy Load Info</button>
     </div>
     <h1>${escapeHtml(title)} <span style="color:#667085;font-size:16px">${escapeHtml(fields.miles || '')}</span></h1>
     <details class="section" data-section="route" open>
@@ -992,10 +1011,13 @@
     const encode = encodeURIComponent;
     document.querySelectorAll('details[data-section]').forEach(section => {
       const key = 'ofp-map-section-' + section.dataset.section;
-      const saved = sessionStorage.getItem(key);
+      let saved = '';
+      try { saved = sessionStorage.getItem(key) || ''; } catch {}
       if (saved === '0') section.removeAttribute('open');
       if (saved === '1') section.setAttribute('open', '');
-      section.addEventListener('toggle', () => sessionStorage.setItem(key, section.open ? '1' : '0'));
+      section.addEventListener('toggle', () => {
+        try { sessionStorage.setItem(key, section.open ? '1' : '0'); } catch {}
+      });
     });
     const mapEmbedUrl = () => {
       const points = routePoints.map(p => p.trim()).filter(Boolean);
@@ -1080,16 +1102,24 @@
       renderRoute();
       refreshRouteOutputs();
     });
-    addPointBtn.addEventListener('click', e => {
-      e.preventDefault();
-      routePoints.push('');
+    const addPoint = () => {
+      routePoints.splice(Math.max(routePoints.length - 1, 0), 0, '');
       renderRoute();
       refreshRouteOutputs();
-      const newInput = routeList.querySelector('[data-point="' + (routePoints.length - 1) + '"]');
+      const newInput = routeList.querySelector('[data-point="' + Math.max(routePoints.length - 2, 0) + '"]');
       if (newInput) {
         newInput.focus();
         newInput.scrollIntoView({ block: 'nearest' });
       }
+    };
+    addPointBtn.addEventListener('click', e => {
+      e.preventDefault();
+      addPoint();
+    });
+    document.querySelector('[data-copy-load]').addEventListener('click', e => {
+      e.preventDefault();
+      const text = document.body.innerText;
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
     });
     document.querySelectorAll('.calc input,.calc select').forEach(input => input.addEventListener('input', recalc));
     document.querySelectorAll('.calc select').forEach(input => input.addEventListener('change', () => { refreshDriverFields(); recalc(); }));
@@ -1101,14 +1131,16 @@
 </body>
 </html>`;
 
-    const win = window.open('', '_blank');
-    if (!win) {
+    let opened = null;
+    try {
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      opened = window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {}
+    if (!opened) {
       window.open(mapsUrl(fields), '_blank', 'noopener,noreferrer');
-      return;
     }
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
   }
 
   function formatLoadInfo(fields) {
@@ -1671,16 +1703,46 @@
   }
 
   function buildProtocolUrl(toEmail, fields) {
-    const subject     = getTemplateSubject(fields);
-    const template    = EMAIL_TEMPLATES[getTemplateKey()] || Object.values(EMAIL_TEMPLATES)[0];
-    const body        = template.body(fields);
-    const mode        = isAutoSend() ? 'send' : 'draft';
+    const payload = buildEmailPayload(toEmail, fields);
 
-    return `dathelper:to=${encodeURIComponent(toEmail)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}&mode=${mode}`;
+    return `dathelper:to=${encodeURIComponent(payload.to)}&subject=${encodeURIComponent(payload.subject)}&body=${encodeURIComponent(payload.body)}&mode=${payload.mode}`;
   }
 
-  function launch(toEmail, fields) {
+  function buildEmailPayload(toEmail, fields) {
+    const template = EMAIL_TEMPLATES[getTemplateKey()] || Object.values(EMAIL_TEMPLATES)[0];
+    return {
+      to: toEmail,
+      cc: template.cc ? renderTemplateText(template.cc, fields).replace(/\s+/g, ' ').trim() : '',
+      subject: getTemplateSubject(fields),
+      body: template.body(fields),
+      mode: isAutoSend() ? 'send' : 'draft',
+      fields,
+    };
+  }
+
+  function launch(toEmail, fields, onDelivered) {
     const routed = routeEmailTarget(toEmail, fields);
+    const payload = buildEmailPayload(routed.email, routed.fields);
+    if (getEmailProvider() === 'gmail' && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'ofp:gmail-deliver', payload }, response => {
+        if (chrome.runtime.lastError) {
+          alert(`ONE Freight Pro Gmail error: ${chrome.runtime.lastError.message}`);
+          return;
+        }
+        if (!response || !response.ok) {
+          alert(`ONE Freight Pro Gmail error: ${(response && response.error) || 'Unable to send through Gmail.'}`);
+          return;
+        }
+        logEmailAction(routed.email, routed.fields);
+        markContacted(routed.email, routed.fields);
+        if (typeof onDelivered === 'function') onDelivered();
+        if (payload.mode === 'draft') {
+          alert(`Gmail draft created for ${routed.email}.`);
+        }
+      });
+      return false;
+    }
+
     const url = buildProtocolUrl(routed.email, routed.fields);
     if (DEBUG) console.log('[ONE Freight Pro] launch:', url);
     logEmailAction(routed.email, routed.fields);
@@ -1689,6 +1751,7 @@
     document.body.appendChild(a);
     a.click();
     a.remove();
+    return true;
   }
 
   function logBrokenEmail(brokenEmail) {
@@ -2200,6 +2263,279 @@
     else detailEl.appendChild(slot);
   }
 
+  function ensurePreferredBrokerShortcutStyle() {
+    if (document.getElementById('ofp-preferred-broker-shortcut-style')) return;
+    const style = document.createElement('style');
+    style.id = 'ofp-preferred-broker-shortcut-style';
+    style.textContent = `
+      .ofp-mc-shortcut-host > .ofp-add-preferred-broker {
+        opacity:0;
+        margin-left:6px;
+        width:21px;
+        height:21px;
+        border:0;
+        border-radius:5px;
+        background:#e9ddff;
+        color:#4b00d9;
+        font-weight:900;
+        font-size:15px;
+        line-height:1;
+        cursor:pointer;
+        vertical-align:middle;
+        transition:opacity .12s ease, background .12s ease, color .12s ease;
+      }
+      .ofp-mc-shortcut-host:hover > .ofp-add-preferred-broker,
+      .ofp-add-preferred-broker:hover,
+      .ofp-add-preferred-broker:focus { opacity:1; }
+      .ofp-add-preferred-broker:hover,
+      .ofp-add-preferred-broker:focus { background:#4b00d9; color:#fff; }
+      .ofp-pref-modal-backdrop {
+        position:fixed;
+        inset:0;
+        z-index:2147483646;
+        background:rgba(15,23,42,.38);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:18px;
+      }
+      .ofp-pref-modal {
+        width:min(620px, calc(100vw - 36px));
+        max-height:calc(100vh - 36px);
+        overflow:auto;
+        background:#fff;
+        color:#0f172a;
+        border-radius:8px;
+        box-shadow:0 20px 70px rgba(15,23,42,.32);
+        font-family:Inter, Arial, sans-serif;
+      }
+      .ofp-pref-modal header {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:12px;
+        padding:18px 20px 12px;
+        border-bottom:1px solid #e5e7eb;
+      }
+      .ofp-pref-modal h2 { margin:0; font-size:22px; line-height:1.15; }
+      .ofp-pref-kicker {
+        display:block;
+        margin-bottom:5px;
+        font-size:11px;
+        font-weight:800;
+        letter-spacing:.08em;
+        text-transform:uppercase;
+        color:#64748b;
+      }
+      .ofp-pref-close {
+        border:0;
+        background:transparent;
+        font-size:26px;
+        line-height:1;
+        cursor:pointer;
+        color:#0f172a;
+      }
+      .ofp-pref-form {
+        padding:16px 20px 20px;
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:12px 14px;
+      }
+      .ofp-pref-form label {
+        display:flex;
+        flex-direction:column;
+        gap:5px;
+        font-size:12px;
+        font-weight:700;
+        color:#475569;
+      }
+      .ofp-pref-form input,
+      .ofp-pref-form textarea {
+        border:1px solid #cbd5e1;
+        border-radius:6px;
+        padding:9px 10px;
+        font:14px/1.3 inherit;
+        color:#0f172a;
+        background:#fff;
+      }
+      .ofp-pref-form textarea { min-height:76px; resize:vertical; }
+      .ofp-pref-wide { grid-column:1 / -1; }
+      .ofp-pref-actions {
+        grid-column:1 / -1;
+        display:flex;
+        align-items:center;
+        justify-content:flex-end;
+        gap:9px;
+        padding-top:4px;
+      }
+      .ofp-pref-actions button {
+        border:0;
+        border-radius:7px;
+        padding:9px 13px;
+        font-weight:800;
+        cursor:pointer;
+      }
+      .ofp-pref-save { background:#6500e8; color:#fff; }
+      .ofp-pref-cancel { background:#ede7fb; color:#4b00d9; }
+      .ofp-pref-status {
+        margin-right:auto;
+        color:#64748b;
+        font-size:12px;
+        font-weight:700;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function findMcDisplayElement(detailEl, mc) {
+    const normalizedMc = normalizeMcNumber(mc);
+    if (!normalizedMc) return null;
+    const candidates = [...detailEl.querySelectorAll('span,div,p,a,strong,b')].filter(isVisibleElement);
+    return candidates.find(el => {
+      if (el.querySelector('.ofp-add-preferred-broker')) return false;
+      const text = cleanText(el.innerText || el.textContent);
+      if (!text || text.length > 80) return false;
+      return new RegExp(`\\bMC\\s*#?\\s*${normalizedMc}\\b`, 'i').test(text) ||
+        new RegExp(`\\bDocket\\s*#?\\s*${normalizedMc}\\b`, 'i').test(text);
+    }) || null;
+  }
+
+  function syncPreferredBrokerRulesToExtensionStorage() {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ [PREFERRED_BROKERS_KEY]: PREFERRED_BROKER_RULES });
+      }
+    } catch {}
+  }
+
+  function openPreferredBrokerDraft(fields) {
+    ensurePreferredBrokerShortcutStyle();
+    document.querySelectorAll('.ofp-pref-modal-backdrop').forEach(el => el.remove());
+
+    const mc = normalizeMcNumber(fields && fields.mc);
+    const company = cleanText(fields && fields.company);
+    const overlay = document.createElement('div');
+    overlay.className = 'ofp-pref-modal-backdrop';
+    overlay.innerHTML = `
+      <div class="ofp-pref-modal" role="dialog" aria-modal="true" aria-label="Add preferred broker">
+        <header>
+          <div>
+            <span class="ofp-pref-kicker">ONE Freight Pro</span>
+            <h2>Add Preferred Broker</h2>
+          </div>
+          <button type="button" class="ofp-pref-close" aria-label="Close">&times;</button>
+        </header>
+        <div class="ofp-pref-form">
+          <label>
+            Company
+            <input data-ofp-pref-company value="${escapeHtml(company)}">
+          </label>
+          <label>
+            MC Number Match(es)
+            <input data-ofp-pref-mc value="${escapeHtml(mc)}" placeholder="175953; 222333; MC444555">
+          </label>
+          <label>
+            Preferred Broker Name
+            <input data-ofp-pref-name placeholder="Leave blank until known">
+          </label>
+          <label>
+            Preferred Email
+            <input data-ofp-pref-email placeholder="broker@example.com">
+          </label>
+          <label>
+            Phone
+            <input data-ofp-pref-phone placeholder="Optional">
+          </label>
+          <label class="ofp-pref-wide">
+            Notes
+            <textarea data-ofp-pref-notes placeholder="Lane preference, backup contact, special instructions..."></textarea>
+          </label>
+          <div class="ofp-pref-actions">
+            <span class="ofp-pref-status" data-ofp-pref-status></span>
+            <button type="button" class="ofp-pref-cancel">Cancel</button>
+            <button type="button" class="ofp-pref-save">Save Rule</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('.ofp-pref-close') || e.target.closest('.ofp-pref-cancel')) {
+        e.preventDefault();
+        close();
+      }
+    });
+    overlay.querySelector('.ofp-pref-save').addEventListener('click', e => {
+      e.preventDefault();
+      const get = sel => overlay.querySelector(sel);
+      const status = get('[data-ofp-pref-status]');
+      const nextCompany = cleanText(get('[data-ofp-pref-company]').value);
+      const mcNumbers = normalizeMcList(get('[data-ofp-pref-mc]').value);
+      const brokerName = cleanText(get('[data-ofp-pref-name]').value);
+      const email = normalizeEmail(get('[data-ofp-pref-email]').value);
+      const phone = cleanText(get('[data-ofp-pref-phone]').value);
+      const notes = cleanText(get('[data-ofp-pref-notes]').value);
+
+      if (!nextCompany && !mcNumbers.length) {
+        status.textContent = 'Add a company or MC number.';
+        return;
+      }
+      if (!isValidEmail(email)) {
+        status.textContent = 'Add a valid preferred email before saving.';
+        return;
+      }
+
+      const rules = normalizePreferredBrokerRules(PREFERRED_BROKER_RULES);
+      const existingIndex = rules.findIndex(rule =>
+        mcNumbers.some(num => (rule.mcNumbers || []).includes(num)) ||
+        (nextCompany && rule.company && nextCompany.toLowerCase() === rule.company.toLowerCase())
+      );
+      const rule = {
+        id: existingIndex >= 0 ? rules[existingIndex].id : (mcNumbers[0] ? `broker_mc_${mcNumbers[0]}_${Date.now()}` : `broker_${Date.now()}`),
+        company: nextCompany,
+        mcNumbers,
+        brokerName,
+        email,
+        phone,
+        notes,
+        enabled: true,
+      };
+      if (existingIndex >= 0) rules[existingIndex] = rule;
+      else rules.push(rule);
+      applyPreferredBrokerRules(rules);
+      syncPreferredBrokerRulesToExtensionStorage();
+      status.textContent = 'Saved.';
+      setTimeout(close, 450);
+    });
+
+    document.body.appendChild(overlay);
+    const focusTarget = overlay.querySelector('[data-ofp-pref-name]') || overlay.querySelector('[data-ofp-pref-email]');
+    if (focusTarget) focusTarget.focus();
+  }
+
+  function injectPreferredBrokerShortcut(detailEl, fields) {
+    const mc = normalizeMcNumber(fields && fields.mc);
+    if (!mc || detailEl.querySelector('.ofp-add-preferred-broker')) return;
+    const mcEl = findMcDisplayElement(detailEl, mc);
+    if (!mcEl) return;
+    ensurePreferredBrokerShortcutStyle();
+    mcEl.classList.add('ofp-mc-shortcut-host');
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ofp-add-preferred-broker';
+    btn.textContent = '+';
+    btn.title = 'Add this company to Preferred Brokers';
+    btn.setAttribute('aria-label', 'Add this company to Preferred Brokers');
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPreferredBrokerDraft(fields);
+    });
+    mcEl.appendChild(btn);
+  }
+
   // ── Inject "Launch Outlook" button for broken/missing emails ──────────────
   function injectButton(detailEl, fields, brokenEmail) {
     const fp = cardFingerprint(fields);
@@ -2211,7 +2547,10 @@
       if (!parent || !document.body.contains(parent)) el.remove();
     });
 
-    if (detailEl.querySelector('.dat-helper-wrap')) return;
+    if (detailEl.querySelector('.dat-helper-wrap')) {
+      injectPreferredBrokerShortcut(detailEl, fields);
+      return;
+    }
 
     const wrap = document.createElement('div');
     wrap.className = 'dat-helper-wrap';
@@ -2292,9 +2631,13 @@
       const routed = routeEmailTarget(brokenEmail || fields.email || '', fields);
       const target = routed.email;
       if (wasContactedToday(target, routed.fields) && !confirm(`You already emailed ${target} about ${describeContactContext(routed.fields)} today — send again?`)) return;
-      launch(brokenEmail || fields.email || '', fields);
-      markContacted(target, routed.fields);
-      if (target) setContactedStyle(btn);
+      const deliveredNow = launch(brokenEmail || fields.email || '', fields, () => {
+        if (target) setContactedStyle(btn);
+      });
+      if (deliveredNow !== false) {
+        markContacted(target, routed.fields);
+        if (target) setContactedStyle(btn);
+      }
     });
 
     wrap.appendChild(template);
@@ -2336,6 +2679,7 @@
 
     const anchor = detailEl.querySelector('dat-contacts') || detailEl;
     anchor.appendChild(wrap);
+    injectPreferredBrokerShortcut(detailEl, fields);
   }
 
   // ── Click interception ────────────────────────────────────────────────────
@@ -2364,16 +2708,16 @@
     if (isValidEmail(email)) {
       const routed = routeEmailTarget(email, fields);
       if (wasContactedToday(routed.email, routed.fields) && !confirm(`You already emailed ${routed.email} about ${describeContactContext(routed.fields)} today — send again?`)) return;
-      launch(email, fields);
-      markContacted(routed.email, routed.fields);
+      const deliveredNow = launch(email, fields);
+      if (deliveredNow !== false) markContacted(routed.email, routed.fields);
     } else {
       // mailto: href was broken — try extracting a clean email from card text first
       const textEmail = findEmailInCard(detailEl);
       if (isValidEmail(textEmail)) {
         const routed = routeEmailTarget(textEmail, fields);
         if (wasContactedToday(routed.email, routed.fields) && !confirm(`You already emailed ${routed.email} about ${describeContactContext(routed.fields)} today — send again?`)) return;
-        launch(textEmail, fields);
-        markContacted(routed.email, routed.fields);
+        const deliveredNow = launch(textEmail, fields);
+        if (deliveredNow !== false) markContacted(routed.email, routed.fields);
       } else {
         injectButton(detailEl, fields, email || rawEmail);
       }
@@ -2500,8 +2844,8 @@
     toolbar.appendChild(makeToolbarButton('✉', 'Send email with ONE Freight Pro', () => {
       const fields = extractRowFields(row);
       const routed = routeEmailTarget(email || fields.email, fields);
-      launch(email || fields.email, fields);
-      markContacted(routed.email, routed.fields);
+      const deliveredNow = launch(email || fields.email, fields);
+      if (deliveredNow !== false) markContacted(routed.email, routed.fields);
     }));
     toolbar.appendChild(makeToolbarButton('M', 'Open lane in Google Maps', () => {
       const fields = extractRowFields(row);

@@ -9,7 +9,7 @@
   <header>
     <div>
       <div class="brand">ONE Freight Pro</div>
-      <div class="sub">Outlook Desktop now. Gmail API planned.</div>
+      <div class="sub">Outlook Desktop or Gmail API sending.</div>
     </div>
     <div class="pill" data-status>Local</div>
   </header>
@@ -67,6 +67,35 @@
           </button>
         </div>
       </div>
+
+      <div class="section">
+        <div class="list-head">
+          <h2>Email Sending</h2>
+          <span class="muted" data-email-provider-label>Outlook Desktop</span>
+        </div>
+        <div class="email-settings">
+          <label>
+            Send Provider
+            <select data-email-provider>
+              <option value="outlook">Outlook Desktop helper</option>
+              <option value="gmail">Gmail API</option>
+            </select>
+          </label>
+          <label>
+            Gmail Account
+            <input data-gmail-account readonly placeholder="Not connected">
+          </label>
+          <div class="actions">
+            <button data-save-email-provider>Save Provider</button>
+            <button class="secondary" data-connect-gmail>Connect Gmail</button>
+            <button class="secondary" data-disconnect-gmail>Disconnect</button>
+          </div>
+          <div class="setup-warning" data-gmail-setup-warning hidden>
+            Gmail setup required: add a Google OAuth client ID in the extension manifest before Connect Gmail can open the Google sign-in prompt.
+          </div>
+          <div class="hint" data-gmail-status></div>
+        </div>
+      </div>
     </section>
 
     <section class="panel" data-panel="templates">
@@ -104,7 +133,7 @@
           <div class="hint" data-save-status></div>
           <div class="variables">
             <h3>Variables</h3>
-            <p>{{origin}} {{dest}} {{avail}} {{truck}} {{rate}} {{miles}} {{deadhead}} {{market_avg}} {{offer_20}} {{company}} {{ref_id}}</p>
+            <div class="variable-grid" data-variable-list></div>
           </div>
         </section>
       </div>
@@ -132,6 +161,10 @@
           <label>
             Preferred Email
             <input data-broker-email placeholder="broker@example.com">
+          </label>
+          <label>
+            Preferred Phone
+            <input data-broker-phone placeholder="Optional">
           </label>
           <label>
             Notes

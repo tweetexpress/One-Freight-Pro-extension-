@@ -10,7 +10,9 @@ This removes the need to copy code into Tampermonkey. The browser extension runs
 ONE-Freight-Pro-Extension\
   browser-extension\
     manifest.json
+    background.js
     content.js
+    popup.html/css/js
     icons\
       icon-128.png
   windows-helper\
@@ -47,6 +49,30 @@ C:\Users\rbric\Documents\Codex\2026-05-02\i-built-this-tool-to-run\ONE-Freight-P
 Go to `https://one.dat.com/search-loads`, open a load card, then click the broker email or press `Shift+E`.
 
 Draft Mode opens an Outlook draft. Money Mode sends immediately.
+
+## Gmail API Setup
+
+The extension now has the first Gmail API path built in, but it needs a Google OAuth client ID before Gmail can connect.
+
+1. Create a Google Cloud project.
+2. Enable the Gmail API.
+3. Configure the OAuth consent screen.
+4. Create an OAuth client for a Chrome extension.
+5. Use the installed extension ID from `edge://extensions` or `chrome://extensions`.
+6. Replace this placeholder in `browser-extension\manifest.json`:
+
+```text
+REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com
+```
+
+The requested scopes are:
+
+```text
+https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.compose
+```
+
+After the client ID is installed, open the ONE Freight Pro extension popup, choose Gmail API under Email Sending, and click Connect Gmail.
 
 ## Distribution Next Step
 
