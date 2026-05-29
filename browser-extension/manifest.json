@@ -31,7 +31,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://one.dat.com/search-loads*"
+        "https://one.dat.com/*"
       ],
       "js": [
         "content.js"

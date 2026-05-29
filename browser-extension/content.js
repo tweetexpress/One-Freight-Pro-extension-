@@ -4,7 +4,7 @@
 // @version      3.55.0
 // @description  Pre-fills Outlook email for DAT load inquiries and adds quick load-card tools
 // @author       Roman / Tweet Express LLC
-// @match        https://one.dat.com/search-loads*
+// @match        https://one.dat.com/*
 // @grant        none
 // ==/UserScript==
 
@@ -3381,22 +3381,74 @@
     injectSearchToggleBar();
   }
 
-  // ── MutationObserver: handle every expanded card ─────────────────────────
-  let obsTimer = null;
-  const observer = new MutationObserver(() => {
-    clearTimeout(obsTimer);
-    obsTimer = setTimeout(() => {
-      scanLoadDetails();
-    }, 400);
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-  setTimeout(scanLoadDetails, 500);
-
-  if (document.body) {
-    createTogglePanel();
-  } else {
-    document.addEventListener('DOMContentLoaded', createTogglePanel);
+  function isSearchLoadsRoute() {
+    return location.hostname === 'one.dat.com' && /^\/search-loads(?:\/|$)/.test(location.pathname);
   }
+
+  let hasStarted = false;
+  let observer = null;
+  let obsTimer = null;
+  let startTimer = null;
+  let routePoll = null;
+
+  function scanSoon(delay = 0) {
+    setTimeout(() => {
+      if (isSearchLoadsRoute()) scanLoadDetails();
+    }, delay);
+  }
+
+  function startOnSearchLoads() {
+    if (hasStarted || !isSearchLoadsRoute()) return;
+    if (!document.body) {
+      document.addEventListener('DOMContentLoaded', startOnSearchLoads, { once: true });
+      return;
+    }
+
+    hasStarted = true;
+    if (routePoll) {
+      clearInterval(routePoll);
+      routePoll = null;
+    }
+    createTogglePanel();
+
+    // DAT can land on /search-loads through an in-app redirect after login.
+    // Keep scanning through the first slow render so refresh is not required.
+    observer = new MutationObserver(() => {
+      clearTimeout(obsTimer);
+      obsTimer = setTimeout(() => {
+        if (isSearchLoadsRoute()) scanLoadDetails();
+      }, 400);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    [0, 500, 1200, 2500, 5000].forEach(scanSoon);
+  }
+
+  function scheduleStartOnRouteChange() {
+    clearTimeout(startTimer);
+    startTimer = setTimeout(startOnSearchLoads, 50);
+  }
+
+  function patchHistoryMethod(method) {
+    const original = history[method];
+    if (!original || original.__ofpPatched) return;
+    const patched = function () {
+      const result = original.apply(this, arguments);
+      window.dispatchEvent(new Event('ofp:locationchange'));
+      return result;
+    };
+    patched.__ofpPatched = true;
+    history[method] = patched;
+  }
+
+  patchHistoryMethod('pushState');
+  patchHistoryMethod('replaceState');
+  window.addEventListener('ofp:locationchange', scheduleStartOnRouteChange);
+  window.addEventListener('popstate', scheduleStartOnRouteChange);
+  window.addEventListener('hashchange', scheduleStartOnRouteChange);
+  window.addEventListener('pageshow', scheduleStartOnRouteChange);
+  document.addEventListener('DOMContentLoaded', scheduleStartOnRouteChange);
+  routePoll = setInterval(scheduleStartOnRouteChange, 500);
+  scheduleStartOnRouteChange();
 
 })();
