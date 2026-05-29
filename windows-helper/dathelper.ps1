@@ -30,28 +30,11 @@ try {
     $bodyTxt = if ($params['body'])    { $params['body'] }    else { '' }
     $mode    = if ($params['mode'])    { $params['mode'] }    else { 'draft' }
 
-    # Escape HTML entities, convert newlines to <br>
-    $bodyHtml = $bodyTxt `
-        -replace '&', '&amp;' `
-        -replace '<', '&lt;'  `
-        -replace '>', '&gt;'  `
-        -replace "`n", '<br>'
-
     $outlook = New-Object -ComObject Outlook.Application
     $mail    = $outlook.CreateItem(0)  # olMailItem
 
     $mail.To      = $to
     $mail.Subject = $subject
-
-    $ourContent = "<div style='font-family:Calibri,sans-serif;font-size:11pt;margin:0;'>$bodyHtml</div>"
-
-    function Inject-Content($html, $content) {
-        $html = $html -replace '(<p class=MsoNormal><o:p>&nbsp;</o:p></p>){2,}', '<p class=MsoNormal><o:p>&nbsp;</o:p></p>'
-        if ($html -match '(?i)<body[^>]*>') {
-            return $html -replace '(?i)(<body[^>]*>)', ('$1' + $content)
-        }
-        return $content + $html
-    }
 
     function Bring-Inspector-To-Front($inspector) {
         try { $inspector.Activate() } catch { }
@@ -82,22 +65,52 @@ namespace Win32 {
         } catch { }
     }
 
+    function Wait-For-Outlook-Signature($mail, [int]$minMilliseconds = 1200, [int]$maxMilliseconds = 4500) {
+        $started = Get-Date
+        $lastLength = -1
+        $stableReads = 0
+
+        do {
+            Start-Sleep -Milliseconds 250
+            $elapsed = ((Get-Date) - $started).TotalMilliseconds
+            $html = ''
+            try { $html = [string]$mail.HTMLBody } catch { }
+            $length = $html.Length
+
+            if ($length -gt 0 -and $length -eq $lastLength) {
+                $stableReads++
+            } else {
+                $stableReads = 0
+                $lastLength = $length
+            }
+
+            if ($elapsed -ge $minMilliseconds -and $stableReads -ge 2) {
+                return
+            }
+        } while (((Get-Date) - $started).TotalMilliseconds -lt $maxMilliseconds)
+    }
+
+    function Insert-Content-In-Editor($inspector, $text) {
+        $range = $inspector.WordEditor.Range(0, 0)
+        $range.InsertBefore($text + "`r`n`r`n")
+    }
+
     if ($mode -eq 'send') {
-        # Let Outlook build the real item's signature so linked images remain valid,
-        # then close the inspector before Send() so Outlook does not block auto-send.
+        # Use Outlook's Word editor, just like draft mode, so the default
+        # signature and linked/embedded images finish hydrating before Send().
         $inspector = $mail.GetInspector
-        $baseHtml = $mail.HTMLBody
-        $mail.HTMLBody = if ($baseHtml) { Inject-Content $baseHtml $ourContent } else { $ourContent }
+        $mail.Display($false)
+        Wait-For-Outlook-Signature $mail
+        Insert-Content-In-Editor $inspector $bodyTxt
         $mail.Save()
-        try { $inspector.Close(0) } catch { }  # olSave
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inspector) | Out-Null } catch { }
+        Start-Sleep -Milliseconds 750
         $mail.Send()
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($inspector) | Out-Null } catch { }
     } else {
         # Initialize the editor before showing the draft so Outlook inserts the signature
         # and our text is already in place when the compose window appears.
         $inspector = $mail.GetInspector
-        $range = $inspector.WordEditor.Range(0, 0)
-        $range.InsertBefore($bodyTxt + "`r`n`r`n")
+        Insert-Content-In-Editor $inspector $bodyTxt
         $mail.Display($false)
         Start-Sleep -Milliseconds 150
         Bring-Inspector-To-Front $inspector
