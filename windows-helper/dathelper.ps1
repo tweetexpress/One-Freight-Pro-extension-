@@ -95,6 +95,120 @@ namespace Win32 {
         $range.InsertBefore($text + "`r`n`r`n")
     }
 
+    function Get-Image-Extension($mimeType) {
+        switch -Regex ($mimeType) {
+            'jpeg|jpg' { return '.jpg' }
+            'png'      { return '.png' }
+            'gif'      { return '.gif' }
+            'bmp'      { return '.bmp' }
+            'webp'     { return '.webp' }
+            default    { return '.img' }
+        }
+    }
+
+    function Resolve-Local-Image-Path($src) {
+        if (-not $src) { return $null }
+        if ($src -match '^(?i)(https?:|cid:|data:)') { return $null }
+
+        $decoded = [System.Uri]::UnescapeDataString($src).Trim()
+        if ($decoded -match '^(?i)file:') {
+            try { $decoded = ([System.Uri]$decoded).LocalPath } catch { }
+        }
+        $decoded = $decoded -replace '/', '\'
+
+        if ([System.IO.Path]::IsPathRooted($decoded) -and (Test-Path -LiteralPath $decoded)) {
+            return $decoded
+        }
+
+        $sigRoot = Join-Path $env:APPDATA 'Microsoft\Signatures'
+        $candidate = Join-Path $sigRoot $decoded
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+
+        return $null
+    }
+
+    function Add-Inline-Attachment($mail, $path, $contentId) {
+        $attachment = $mail.Attachments.Add($path, 1, 0, [System.IO.Path]::GetFileName($path)) # olByValue
+        $attachment.PropertyAccessor.SetProperty(
+            'http://schemas.microsoft.com/mapi/proptag/0x3712001F',
+            $contentId
+        )
+        $attachment.PropertyAccessor.SetProperty(
+            'http://schemas.microsoft.com/mapi/proptag/0x3713001F',
+            $contentId
+        )
+        return $attachment
+    }
+
+    function Embed-Signature-Images($mail) {
+        $html = ''
+        try { $html = [string]$mail.HTMLBody } catch { return }
+        if (-not $html) { return }
+
+        $srcMap = @{}
+        $tempFiles = New-Object System.Collections.Generic.List[string]
+        $pattern = '(?i)(src\s*=\s*)(["''])(.*?)(\2)'
+
+        $updated = [System.Text.RegularExpressions.Regex]::Replace(
+            $html,
+            $pattern,
+            [System.Text.RegularExpressions.MatchEvaluator]{
+                param($match)
+
+                $prefix = $match.Groups[1].Value
+                $quote = $match.Groups[2].Value
+                $src = $match.Groups[3].Value
+
+                if ($src -match '^(?i)(cid:|https?:)') {
+                    return $match.Value
+                }
+
+                if ($srcMap.ContainsKey($src)) {
+                    return $prefix + $quote + 'cid:' + $srcMap[$src] + $quote
+                }
+
+                $path = $null
+                if ($src -match '^(?is)data:([^;,]+);base64,\s*(.+)$') {
+                    try {
+                        $mimeType = $matches[1]
+                        $base64 = ($matches[2] -replace '\s+', '')
+                        $bytes = [Convert]::FromBase64String($base64)
+                        $path = Join-Path $env:TEMP ("ofp-signature-" + [guid]::NewGuid().ToString('N') + (Get-Image-Extension $mimeType))
+                        [System.IO.File]::WriteAllBytes($path, $bytes)
+                        $tempFiles.Add($path) | Out-Null
+                    } catch {
+                        return $match.Value
+                    }
+                } else {
+                    $path = Resolve-Local-Image-Path $src
+                }
+
+                if (-not $path -or -not (Test-Path -LiteralPath $path)) {
+                    return $match.Value
+                }
+
+                try {
+                    $contentId = 'ofp-' + [guid]::NewGuid().ToString('N')
+                    Add-Inline-Attachment $mail $path $contentId | Out-Null
+                    $srcMap[$src] = $contentId
+                    return $prefix + $quote + 'cid:' + $contentId + $quote
+                } catch {
+                    return $match.Value
+                }
+            }
+        )
+
+        if ($updated -ne $html) {
+            $mail.HTMLBody = $updated
+        }
+
+        foreach ($file in $tempFiles) {
+            try { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue } catch { }
+        }
+    }
+
     if ($mode -eq 'send') {
         # Use Outlook's Word editor, just like draft mode, so the default
         # signature and linked/embedded images finish hydrating before Send().
@@ -102,6 +216,7 @@ namespace Win32 {
         $mail.Display($false)
         Wait-For-Outlook-Signature $mail
         Insert-Content-In-Editor $inspector $bodyTxt
+        Embed-Signature-Images $mail
         $mail.Save()
         Start-Sleep -Milliseconds 750
         $mail.Send()
