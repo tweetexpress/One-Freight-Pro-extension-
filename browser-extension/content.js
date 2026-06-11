@@ -1702,12 +1702,6 @@
     anchor.parentElement ? anchor.parentElement.insertBefore(panel, anchor.nextSibling) : detailEl.appendChild(panel);
   }
 
-  function buildProtocolUrl(toEmail, fields) {
-    const payload = buildEmailPayload(toEmail, fields);
-
-    return `dathelper:to=${encodeURIComponent(payload.to)}&subject=${encodeURIComponent(payload.subject)}&body=${encodeURIComponent(payload.body)}&mode=${payload.mode}`;
-  }
-
   function buildEmailPayload(toEmail, fields) {
     const template = EMAIL_TEMPLATES[getTemplateKey()] || Object.values(EMAIL_TEMPLATES)[0];
     return {
@@ -1743,24 +1737,25 @@
       return false;
     }
 
-    const url = buildProtocolUrl(routed.email, routed.fields);
-    if (DEBUG) console.log('[ONE Freight Pro] launch:', url);
+    if (DEBUG) console.log('[ONE Freight Pro] launch:', payload);
     logEmailAction(routed.email, routed.fields);
-    const a = document.createElement('a');
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    chrome.runtime.sendMessage({ type: 'ofp:outlook-deliver', payload }, response => {
+      if (chrome.runtime.lastError || !response || !response.ok) {
+        const detail = (chrome.runtime.lastError && chrome.runtime.lastError.message)
+          || (response && response.error)
+          || 'The Outlook helper did not respond.';
+        alert(`ONE Freight Pro Outlook error: ${detail}\n\nIf the helper is not installed yet, run windows-helper\\native-host\\install-native-host.ps1.`);
+        return;
+      }
+      if (typeof onDelivered === 'function') onDelivered();
+    });
     return true;
   }
 
   function logBrokenEmail(brokenEmail) {
-    const url = `dathelper:action=log&email=${encodeURIComponent(brokenEmail)}`;
-    const a = document.createElement('a');
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    chrome.runtime.sendMessage({ type: 'ofp:outlook-deliver', payload: { action: 'log', email: brokenEmail } }, () => {
+      void chrome.runtime.lastError; // fire-and-forget — pattern logging is best-effort
+    });
   }
 
   // Module-level hook so markContacted can refresh the badge live

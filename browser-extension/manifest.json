@@ -9,6 +9,7 @@
   "permissions": [
     "activeTab",
     "identity",
+    "nativeMessaging",
     "storage"
   ],
   "host_permissions": [

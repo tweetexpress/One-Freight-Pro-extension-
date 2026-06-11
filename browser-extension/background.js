@@ -1,3 +1,4 @@
+const OUTLOOK_NATIVE_HOST = 'com.tweetexpress.onefreightpro';
 const GMAIL_ACCOUNT_KEY = 'ofp-gmail-account';
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const OAUTH_PLACEHOLDER = 'REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com';
@@ -114,6 +115,18 @@ async function deliverGmail(payload) {
   return { ok: true, mode: 'draft', id: draft.id || '' };
 }
 
+function deliverOutlook(payload) {
+  return new Promise(resolve => {
+    chrome.runtime.sendNativeMessage(OUTLOOK_NATIVE_HOST, payload || {}, response => {
+      if (chrome.runtime.lastError) {
+        resolve({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+      resolve(response || { ok: false, error: 'No response from the Outlook helper.' });
+    });
+  });
+}
+
 async function disconnectGmail() {
   try {
     const token = await getAuthToken(false);
@@ -130,6 +143,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'ofp:gmail-connect') return connectGmail();
     if (message.type === 'ofp:gmail-disconnect') return disconnectGmail();
     if (message.type === 'ofp:gmail-deliver') return deliverGmail(message.payload);
+    if (message.type === 'ofp:outlook-deliver') return deliverOutlook(message.payload);
     return { ok: false, error: 'Unknown ONE Freight Pro Gmail command.' };
   };
 
