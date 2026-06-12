@@ -1364,8 +1364,22 @@
     const dateRaw = detailEl.querySelector('.date')?.textContent.trim() || '';
     const pickupDate = dateRaw ? parseDate(dateRaw) : '';
 
-    const labels = [...detailEl.querySelectorAll('.equipment-label .data-label')].map(el => el.textContent.trim());
-    const values = [...detailEl.querySelectorAll('.equipment-data .data-item')].map(el => el.textContent.trim());
+    // DAT now renders Equipment as paired .data-row elements; older layout used
+    // two parallel columns (.equipment-label / .equipment-data)
+    const labels = [];
+    const values = [];
+    detailEl.querySelectorAll('dat-equipment .data-row').forEach(row => {
+      const l = row.querySelector('.data-label');
+      const v = row.querySelector('.data-item');
+      if (l && v) {
+        labels.push(l.textContent.trim());
+        values.push(v.textContent.trim());
+      }
+    });
+    if (!labels.length) {
+      labels.push(...[...detailEl.querySelectorAll('.equipment-label .data-label')].map(el => el.textContent.trim()));
+      values.push(...[...detailEl.querySelectorAll('.equipment-data .data-item')].map(el => el.textContent.trim()));
+    }
     const get = label => { const i = labels.indexOf(label); return i >= 0 ? values[i] : ''; };
 
     const truck    = formatEquipment(get('Truck'));
@@ -2573,7 +2587,7 @@
       action.addEventListener('click', e => {
         e.preventDefault();
         e.stopPropagation();
-        handler(action);
+        handler(action, e);
       });
       return action;
     };
@@ -2638,8 +2652,9 @@
     wrap.appendChild(template);
     wrap.appendChild(btn);
 
-    wrap.appendChild(makeAction('Copy Load', 'Copy the lane and load details', action => {
-      copyText(formatLoadInfo(fields)).then(ok => flashAction(action, ok ? 'Copied' : 'Copy failed'));
+    wrap.appendChild(makeAction('Copy Load', 'Copy the lane and load details (Shift+click: copy card HTML for debugging)', (action, e) => {
+      const text = e && e.shiftKey ? detailEl.outerHTML : formatLoadInfo(fields);
+      copyText(text).then(ok => flashAction(action, ok ? (e && e.shiftKey ? 'HTML copied' : 'Copied') : 'Copy failed'));
     }));
 
     wrap.appendChild(makeAction('Map', 'Open this lane in Google Maps', () => {
